@@ -219,7 +219,7 @@ var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
 
 var_spec$type   <- recode(var_spec$type, text="Char")
 var_spec$type [str_ends(var_spec$variable, "DT")] <- "Date"
-var_spec$format <- recode(var_spec$format,DATE9.="DATE.")
+# var_spec$format <- recode(var_spec$format,DATE9.="DATE.")
 var_spec$length <- as.numeric(var_spec$length)
 var_spec$order  <- as.numeric(var_spec$order)
 
