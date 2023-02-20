@@ -244,26 +244,21 @@ adlbc <- adlbc %>% restrict_derivation(
                             filter = (!is.na(AVISIT) & AVISIT != "Baseline")
                           )
 
-###ANL01FL [A DERIVER] ----
-min_val <-  adlbc %>%
-            filter (!is.na(AVAL) & AVISITN > 0) %>%
-            derive_summary_records(
-              by_vars = vars(USUBJID, PARAMCD),
-              analysis_var = AVAL,
-              summary_fun = function(x)
-                min(x, na.rm = TRUE),
-              set_values_to = vars(ANL01FL = "A DERIVER")
-            ) %>%
-            filter(ANL01FL == 'A DERIVER') %>%
-            distinct(USUBJID, PARAMCD, AVAL, ANL01FL)
-
-
-adlbc <- adlbc %>%
-  derive_vars_merged(
-    dataset_add = min_val,
-    new_vars = vars(ANL01FL),
-    by_vars = vars(USUBJID, PARAMCD, AVAL)
+###ANL01FL [A CONTROLER] ----
+adlbc <- adlbc %>% mutate(ABS_CHG = abs(CHG)) %>%
+  restrict_derivation(
+    derivation = derive_var_extreme_flag,
+    args = params(
+      by_vars = vars(STUDYID, USUBJID, PARAMCD),
+      order = vars(ABS_CHG),
+      new_var = ANL01FL,
+      mode = "first",
+      check_type = "none"
+    ),
+    filter = !is.na(CHG) & AVISITN > 0
   )
+
+
 
 ## Final dataset----
 var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
