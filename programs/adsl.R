@@ -63,7 +63,7 @@ format_racen <- function(x) {
     x== "BLACK OR AFRICAN AMERICAN" ~ 3,
     x== "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 5,
     x== "WHITE" ~ 6,
-    TRUE ~ 999999
+        TRUE ~ 999999
   )
 }
 
@@ -96,8 +96,9 @@ format_armn <- function(x) {
 format_dctreas <- function(x) {
   case_when(
   x=="ADVERSE EVENT" ~ "Adverse Event",
-  x=="COMPLETED" ~ "Completed", #to confirm
+  x=="COMPLETED" ~ "",
   x=="DEATH" ~ "Death",
+  x=="I/E NOT MET" ~ "I/E Not Met",
   x=="LACK OF EFFICACY" ~ "Lack of Efficacy",
   x=="LOST TO FOLLOW-UP" ~ "Lost to Follow-up",
   x=="PHYSICIAN DECISION" ~ "Physician Decision",
@@ -237,22 +238,34 @@ adsl <- adsl %>%
   derive_var_trtdurd()
 
 ###DCSREAS / DISCONFL / DSRAEFL----
+
+#case TERM is not equal to 'PROTOCOL ENTRY CRITERIA NOT MET'
 adsl <- adsl %>% rename (DCDECOD_=DCDECOD)%>%
   derive_vars_disposition_reason(
     dataset_ds = ds,
-    new_var = DCSREAS_,
+    new_var = DCSREAS_1_,
     reason_var = DSDECOD,
     # reason_var_spe = DSTERM,
     format_new_vars = format_dcsreas,
-    filter_ds = DSCAT == "DISPOSITION EVENT"
+    filter_ds = DSCAT == "DISPOSITION EVENT" & DSTERM != 'PROTOCOL ENTRY CRITERIA NOT MET'
   )%>%
-  mutate(DCSREAS = format_dctreas(DCSREAS_)) %>%
+  mutate(DCSREAS_1 = format_dctreas(DCSREAS_1_)) %>%
 
-## remove following line if current codelist with 'Completed' term is kept----
-  mutate(DCSREAS = (if_else (DCSREAS=='Completed','',DCSREAS))) %>%
-#___________________________________________________________________________
+#case TERM is  equal to 'PROTOCOL ENTRY CRITERIA NOT MET'
 
-  select(!DCSREAS_) %>% rename (DCDECOD=DCDECOD_) %>%
+  derive_vars_disposition_reason(
+    dataset_ds = ds,
+    new_var = DCSREAS_2_,
+    reason_var = DSDECOD,
+    # reason_var_spe = DSTERM,
+    format_new_vars = format_dcsreas,
+    filter_ds = DSCAT == "DISPOSITION EVENT" & DSTERM == 'PROTOCOL ENTRY CRITERIA NOT MET'
+  ) %>%
+  mutate(DCSREAS_2 = if_else(!is.na(DCSREAS_2_), "I/E Not Met", NA_character_ ) ) %>%
+  mutate(DCSREAS   = if_else(!is.na(DCSREAS_2),DCSREAS_2,DCSREAS_1))%>%
+
+
+  select(!c(DCSREAS_1,DCSREAS_2,DCSREAS_1_,DCSREAS_2_)) %>% rename (DCDECOD=DCDECOD_) %>%
   mutate(DISCONFL = if_else(!(DCSREAS %in% c('Completed','')),'Y','')) %>%
   mutate(DSRAEFL  = if_else(DCSREAS=='Adverse Event','Y',''))
 
@@ -357,7 +370,7 @@ adsl<- adsl %>% derive_vars_merged(
   by_vars = vars(USUBJID)
 )
 
-###DISONSDT / VISIT1DT / DURDIS / DURDSGR1----
+###DISONSDT / VISIT1DT ----
 adsl<- adsl %>% derive_vars_merged(
   dataset_add = mh,
   filter_add =  MHCAT=='PRIMARY DIAGNOSIS',
@@ -380,18 +393,20 @@ adsl<- adsl %>% derive_vars_merged(
   )%>%
   mutate( VISIT1DTM = as_datetime(VISIT1DTM)) %>%
   derive_vars_dtm_to_dt(vars(VISIT1DTM)) %>%
-  select(-VISIT1DTM) %>%
-  # DURDIS
-  derive_vars_duration(new_var = DURDIS,
-                       new_var_unit = ,
-                       start_date = DISONSDT,
-                       end_date = VISIT1DT,
-                       out_unit = "months",
-                       add_one = FALSE,
-                       trunc_out = FALSE
-  ) %>%
-  mutate (DURDIS = round (DURDIS,1)) %>%
-  # DURDSGR1
+  select(-VISIT1DTM)
+#### DURDIS / DURDSGR1 ----
+adsl$DURDIS_ <- compute_duration(
+  adsl$DISONSDT,
+  adsl$VISIT1DT,
+    in_unit = "days",
+  out_unit = "months",
+  floor_in = TRUE,
+  add_one = TRUE,
+  trunc_out = FALSE
+)
+
+adsl <- adsl%>%
+  mutate (DURDIS = round (DURDIS_,1)) %>%
   mutate (DURDSGR1 = format_durdis (DURDIS))
 
 
@@ -517,97 +532,4 @@ adsl %>%
   xportr_type   (var_spec, "ADSL") %>%
   xportr_label  (var_spec, "ADSL") %>%
   xportr_write  ("./adam/adsl.xpt", label = "Subject-Level Analysis Dataset")
-
-
-
-# #__________CHECK PART (vs. CSR data)_______----
-#
-#
-# ##Functions----
-# Check_by_group <-function (my_ds,myvar_group,my_var) {
-#                   my_ds %>% group_by(!!myvar_group) %>% count(!!my_var) %>% ungroup()
-# }
-#
-# Check_by_group_sum <-function (my_ds,myvar_group,my_var){
-#   print(my_var)
-#   my_ds %>% group_by(!!myvar_group) %>% filter(!is.na(!!my_var))%>%
-#                 summarise( n = n(),Mean = mean(!!my_var,na.rm = TRUE),
-#                            SD= sd(!!my_var,na.rm = TRUE),
-#                            Median = median(!!my_var,na.rm = TRUE),
-#                            Min=min(!!my_var,na.rm = TRUE),
-#                            Max= max(!!my_var,na.rm = TRUE))%>%
-#                 ungroup()
-#         }
-#
-#
-# #ordering TRT01P
-# adsl$TRT01P <- factor(adsl$TRT01P, levels = c("Placebo", "Xanomeline Low Dose", "Xanomeline High Dose"))
-#
-#
-#
-# ##Basic Count----
-#
-# #ITTFL
-# Check_by_group(adsl, quo(TRT01P), quo(ITTFL))
-# #SAFFL
-# Check_by_group(adsl, quo(TRT01P), quo(SAFFL))
-# #EFFFL
-# Check_by_group(adsl, quo(TRT01P), quo(EFFFL))
-# #COMP8FL
-# Check_by_group(adsl, quo(TRT01P), quo(COMP8FL))
-# #COMP16FL
-# Check_by_group(adsl, quo(TRT01P), quo(COMP16FL))
-# #COMP24FL
-# Check_by_group(adsl, quo(TRT01P), quo(COMP24FL))
-# #DISCONFL
-# Check_by_group(adsl, quo(TRT01P), quo(DISCONFL))
-# #DSRAEFL
-# Check_by_group(adsl, quo(TRT01P), quo(DSRAEFL))
-# #SEX
-# Check_by_group(adsl, quo(TRT01P), quo(SEX))
-# #RACE
-# Check_by_group(adsl, quo(TRT01P), quo(RACE))
-# #BMIBLGR1
-# Check_by_group(adsl, quo(TRT01P), quo(BMIBLGR1))
-# #DTHFL
-# Check_by_group(adsl, quo(TRT01P), quo(DTHFL))
-# #DURDSGR1
-# Check_by_group(adsl, quo(TRT01P), quo(DURDSGR1))
-# #ARM
-# Check_by_group(adsl, quo(TRT01P), quo(ARM))
-# #TRT01P
-# Check_by_group(adsl, quo(TRT01P), quo(TRT01P))
-# #TRT01PN
-# Check_by_group(adsl, quo(TRT01P), quo(TRT01PN))
-# #TRT01A
-# Check_by_group(adsl, quo(TRT01P), quo(TRT01A))
-# #TRT01AN
-# Check_by_group(adsl, quo(TRT01P), quo(TRT01AN))
-# #AGEGR1
-# Check_by_group(adsl, quo(TRT01P), quo(AGEGR1))
-# #AGEGR1N
-# Check_by_group(adsl, quo(TRT01P), quo(AGEGR1N))
-# #ETHNIC
-# Check_by_group(adsl, quo(TRT01P), quo(ETHNIC))
-# #BMIBLGR1
-# Check_by_group(adsl, quo(TRT01P), quo(BMIBLGR1))
-#
-#
-# ##Summary stat----
-# #AGE
-# Check_by_group_sum(adsl, quo(TRT01P), quo(AGE))
-# #WEIGHTBL
-# Check_by_group_sum(adsl, quo(TRT01P), quo(WEIGHTBL))
-# #HEIGHTBL
-# Check_by_group_sum(adsl, quo(TRT01P), quo(HEIGHTBL))
-# #BMIBL
-# Check_by_group_sum(adsl, quo(TRT01P), quo(BMIBL))
-# #EDUCLVL
-# Check_by_group_sum(adsl, quo(TRT01P), quo(EDUCLVL))
-# #DURDIS
-# Check_by_group_sum(adsl, quo(TRT01P), quo(DURDIS))
-# # MMSETOT
-# Check_by_group_sum(adsl, quo(TRT01P), quo(MMSETOT))
-#
-#
 

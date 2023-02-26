@@ -44,6 +44,16 @@ format_shiftn <- function(x) {
   )
 }
 
+format_racen <- function(x) {
+  case_when(
+    x== "AMERICAN INDIAN OR ALASKA NATIVE" ~ 6,
+    x== "ASIAN" ~ 3,
+    x== "BLACK OR AFRICAN AMERICAN" ~ 2,
+    x== "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 5,
+    x== "WHITE" ~ 1,
+    TRUE ~ 999999
+  )
+}
 
 
 ##Look-up tables ----
@@ -256,6 +266,11 @@ adlbhy <- adlbhy %>%
                 )
         )%>%
   mutate (SHIFT1 = format_shift(SHIFT1),SHIFT1N=format_shiftn(SHIFT1))
+
+
+# RACEN----
+adlbhy <- adlbhy %>% mutate(RACEN = format_racen(RACE))
+
 
 
 ## Final dataset----

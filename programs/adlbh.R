@@ -1,4 +1,4 @@
-# ADLBC Prog ----
+# ADLBH Prog ----
 
 ## Libraries loading----
 library(haven)
@@ -12,7 +12,7 @@ library(lubridate)
 library(stringr)
 
 ## Input datasets reading----
-lb <-  read_xpt ("./sdtm/lb.xpt") %>% filter(LBCAT=='CHEMISTRY')
+lb <-  read_xpt ("./sdtm/lb.xpt")%>% filter(LBCAT=='HEMATOLOGY')
 adsl <- read_xpt ("./adam/adsl.xpt")
 
 ## Convert blanks to NA----
@@ -27,6 +27,8 @@ format_rind <- function(x) {
   )
 }
 
+
+
 format_racen <- function(x) {
   case_when(
     x== "AMERICAN INDIAN OR ALASKA NATIVE" ~ 6,
@@ -38,34 +40,34 @@ format_racen <- function(x) {
   )
 }
 
+
 ##Look-up tables ----
 # Assign PARAMCD, PARAM, and PARAMN
 param_lookup <- tibble::tribble(
-  ~LBTESTCD, ~PARAMCD, ~PARAM,                           ~PARAMN,
-  "ALB",    "ALB",    "Albumin (g/L)",                    33,
-  "ALP",    "ALP",    "Alkaline Phosphatase (U/L)",       22,
-  "ALT",    "ALT",    "Alanine Aminotransferase (U/L)",   24,
-  "AST",    "AST",    "Aspartate Aminotransferase (U/L)", 25,
-  "BILI",   "BILI",   "Bilirubin (umol/L)",               21,
-  "BUN",    "BUN",    "Blood Urea Nitrogen (mmol/L)",     26,
-  "CA",     "CA",     "Calcium (mmol/L)",                 30,
-  "CHOL",   "CHOL",   "Cholesterol (mmol/L)",             34,
-  "CK",     "CK",     "Creatine Kinase (U/L)",            35,
-  "CL",     "CL",     "Chloride (mmol/L)",                20,
-  "CREAT",  "CREAT",  "Creatinine (umol/L)",              27,
-  "GGT",    "GGT",    "Gamma Glutamyl Transferase (U/L)", 23,
-  "GLUC",   "GLUC",   "Glucose (mmol/L)",                 31,
-  "K",      "K",      "Potassium (mmol/L)",               19,
-  "PHOS",   "PHOS",   "Phosphate (mmol/L)",               29,
-  "PROT",   "PROT",   "Protein (g/L)",                    32,
-  "SODIUM", "SODIUM", "Sodium (mmol/L)",                  18,
-  "URATE",  "URATE",  "Urate (umol/L)",                   28,
-)
+  ~LBTESTCD, ~PARAMCD, ~PARAM,~PARAMN,
+  "ANISO","ANISO","Anisocytes",13,
+  "BASO","BASO","Basophils (GI/L)",10,
+  "EOS","EOS","Eosinophils (GI/L)",9,
+  "HCT","HCT","Hematocrit",2,
+  "HGB","HGB","Hemoglobin (mmol/L)",1,
+  "LYM","LYM","Lymphocytes (GI/L)",7,
+  "MACROCY","MACROCY","Macrocytes",14,
+  "MCH","MCH","Ery. Mean Corpuscular Hemoglobin (fmol(Fe))",4,
+  "MCHC","MCHC","Ery. Mean Corpuscular HGB Concentration (mmol/L)",5,
+  "MCV","MCV","Ery. Mean Corpuscular Volume (fL)",3,
+  "MICROCY","MICROCY","Microcytes",15,
+  "MONO","MONO","Monocytes (GI/L)",8,
+  "PLAT","PLAT","Platelet (GI/L)",11,
+  "POIKILO","POIKILO","Poikilocytes",16,
+  "POLYCHR","POLYCHR","Polychromasia",17,
+  "RBC","RBC","Erythrocytes (TI/L)",12,
+  "WBC","WBC","Leukocytes (GI/L)",6
+  )
 
 ##Derivations----
 ###Predecessors / TRTA(N) / TRTP(N)----
 
-adlbc <- lb %>%
+adlbh <- lb %>%
   # Join ADSL variables with LB
   derive_vars_merged(
     dataset_add = adsl,
@@ -79,7 +81,7 @@ derive_vars_dt(new_vars_prefix = "A", dtc = LBDTC) %>%
   derive_vars_dy(reference_date = TRTSDT, source_vars = vars(ADT))
 
 ###PARAM / PARAMCD / PARAMN----
-adlbc <- adlbc %>%
+adlbh <- adlbh %>%
   ## from LOOK-UP table
   # Replace with PARAMCD lookup function
   derive_vars_merged_lookup(
@@ -91,9 +93,9 @@ adlbc <- adlbc %>%
   )%>%
   ### PARCAT1 / AVAL / A1HI / A1LO ----
 mutate(
-  PARCAT1 = "CHEM",
+  PARCAT1 = "HEM",
   AVAL = LBSTRESN,
-  A1LO = LBSTNRLO,
+  A1LO = if_else(LBSTNRLO!=0,LBSTNRLO,NA_real_),
   A1HI = LBSTNRHI,
   ANRLO = LBSTNRLO*0.5,
   ANRHI = LBSTNRHI*1.5,
@@ -104,13 +106,19 @@ mutate(
 
 ###ANRIND ----
 #requires the reference ranges ANRLO, ANRHI
-adlbc <- adlbc %>%
+adlbh <- adlbh %>%
   derive_var_anrind() %>%
-  mutate(ANRIND = if_else( !is.na(ANRIND), format_rind(ANRIND),"N"))
+  mutate(ANRIND_ = if_else( !is.na(ANRIND), format_rind(ANRIND),"N"),
+         #If A1LO and A1HI are missing and LB.LBNRIND=='ABNORMAL' then  set to 'H'
+         ANRIND  = if_else ((is.na(A1LO)|is.na(A1HI)) & LBNRIND=='ABNORMAL','H',ANRIND_)
+        )
+
+
+
 
 ### AVISIT / AVISITN----
 
-adlbc <- adlbc %>%
+adlbh <- adlbh %>%
   # Derive Timing
   mutate(
     AVISIT = case_when(
@@ -125,9 +133,10 @@ adlbc <- adlbc %>%
       TRUE ~ as.numeric (str_remove(AVISIT,'Week '))
     )
   )
+adlbh <- adlbh %>% filter(VISIT !="BASELINE")
 
 ###[PARAM / PARAMCD / PARAMN for changes]----
-adlbc_prev <- adlbc %>% mutate( ori_AVAL=AVAL,
+adlbh_prev <- adlbh %>% mutate( ori_AVAL=AVAL,
                                 ori_PARAM=PARAM,
                                 ori_PARAMCD=PARAMCD,
                                 ori_PARAMN=PARAMN
@@ -143,10 +152,10 @@ adlbc_prev <- adlbc %>% mutate( ori_AVAL=AVAL,
   ungroup() %>%
   select(-c(starts_with("ori"), A1LO, A1HI,ANRLO , ANRHI ))
 
-adlbc <- bind_rows(adlbc_prev, adlbc)
+adlbh <- bind_rows(adlbh_prev, adlbh)
 
 ### ABLFL / BASE / BNRIND / CHG ----
-adlbc <- adlbc %>% restrict_derivation(
+adlbh <- adlbh %>% restrict_derivation(
   derivation = derive_var_extreme_flag,
   args = params(
     by_vars = vars(STUDYID, USUBJID, PARAMCD),
@@ -168,12 +177,12 @@ adlbc <- adlbc %>% restrict_derivation(
   )
 
 
-adlbc <- adlbc %>% derive_var_chg()%>%
+adlbh <- adlbh %>% derive_var_chg()%>%
   mutate (CHG=if_else(VISITNUM>1,CHG, NA_real_))
 
 
 ### BR2A1LO / BR2A1HI----
-adlbc <-  adlbc %>% derive_var_base(
+adlbh <-  adlbh %>% derive_var_base(
   by_vars = vars(STUDYID, USUBJID, PARAMCD),
   source_var = R2A1LO,
   new_var = BR2A1LO
@@ -189,7 +198,7 @@ adlbc <-  adlbc %>% derive_var_base(
 # Maximum of [LBSTRESN-(1.5*ULN)] and [(.5*LLN) - LBSTRESN]
 # ==> pas clair les valeurs absolues _ mais ok avec compare!!!!
 
-adlbc <- adlbc %>%
+adlbh <- adlbh %>%
   mutate(ALBTRVAL_2= abs((0.5*LBSTNRLO)-LBSTRESN )) %>%
   mutate(ALBTRVAL_1= abs(LBSTRESN - (1.5*LBSTNRHI))) %>%
   rowwise() %>%
@@ -198,7 +207,7 @@ adlbc <- adlbc %>%
 
 ###ANL01FL----
 
-adlbc <- adlbc %>%
+adlbh <- adlbh %>%
   restrict_derivation(
     derivation = derive_var_extreme_flag,
     args = params(
@@ -213,7 +222,7 @@ adlbc <- adlbc %>%
 
 
 #Retrieve EOT visit
-adlbc <- adlbc %>%
+adlbh <- adlbh %>%
   derive_extreme_records(
     by_vars = vars(STUDYID, USUBJID, PARAMCD),
     order = vars(ADT, AVISITN, AVAL),
@@ -229,16 +238,16 @@ adlbc <- adlbc %>%
 
 ### AENTMTFL----
 #Did not reach WEEk 24
-Last_obs1 <- adlbc %>% filter (COMP24FL == 'N' & !is.na(AVISIT)) %>%
+Last_obs1 <- adlbh %>% filter (COMP24FL == 'N' & !is.na(AVISIT)) %>%
   distinct(USUBJID,PARAMCD, VISITNUM)
 
 #Completed WEEk 24 and performed visit 12
-Comp24_and_Vis12 <- adlbc %>% filter (COMP24FL == 'Y' & VISITNUM==12) %>%
+Comp24_and_Vis12 <- adlbh %>% filter (COMP24FL == 'Y' & VISITNUM==12) %>%
   distinct(USUBJID,PARAMCD, VISITNUM) %>% mutate(C24_Vis12='Y')
 
 #Completed WEEk 24 (even if visit 12 has not been performed)
 #in case visit 12 has not been performed, keep only the visit before visit 12
-Last_obs2 <- adlbc %>% filter (COMP24FL == 'Y' & !is.na(AVISIT))%>%
+Last_obs2 <- adlbh %>% filter (COMP24FL == 'Y' & !is.na(AVISIT))%>%
   distinct(USUBJID,PARAMCD, VISITNUM) %>%
   derive_vars_merged(
     dataset_add = Comp24_and_Vis12,
@@ -255,7 +264,7 @@ Last_obs <- bind_rows(Last_obs1, Last_obs2) %>%
   mutate(VISITNUM = if_else(VISITNUM>12, 12, VISITNUM))
 
 #Assign flag
-adlbc <- adlbc %>% restrict_derivation(
+adlbh <- adlbh %>% restrict_derivation(
   derivation = derive_var_merged_exist_flag,
   args = params(
     dataset_add = Last_obs,
@@ -267,13 +276,13 @@ adlbc <- adlbc %>% restrict_derivation(
 )
 
 # RACEN----
-adlbc <- adlbc %>% mutate(RACEN = format_racen(RACE))
+adlbh <- adlbh %>% mutate(RACEN = format_racen(RACE))
 
 
 ## Final dataset----
 var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
   dplyr::rename(type = "Data Type") %>%
-  rlang::set_names(tolower) %>% filter (dataset=="ADLBC")
+  rlang::set_names(tolower) %>% filter (dataset=="ADLBH")
 
 
 var_spec$type   <- recode(var_spec$type, text="Char")
@@ -283,20 +292,23 @@ var_spec$length <- as.numeric(var_spec$length)
 var_spec$order  <- as.numeric(var_spec$order)
 
 
-adlbc <- adlbc %>% select(var_spec$variable) %>%
+adlbh <- adlbh %>% select(var_spec$variable) %>%
   arrange(USUBJID, PARAMCD, AVISITN, LBSEQ) %>%
   filter(!(str_starts(PARAMCD, "_")))
 
 ### Applying metadata----
-adlbc <- adlbc %>%
-  xportr_length (var_spec, "ADLBC") %>%
-  xportr_order  (var_spec, "ADLBC") %>%
-  xportr_label  (var_spec, "ADLBC")
+adlbh <- adlbh %>%
+  xportr_length (var_spec, "ADLBH") %>%
+  xportr_order  (var_spec, "ADLBH") %>%
+  xportr_label  (var_spec, "ADLBH")
 
 
 ### Save as XPT----
-adlbc %>%
-  xportr_format (var_spec, "ADLBC") %>%
-  xportr_type   (var_spec, "ADLBC") %>%
-  xportr_label  (var_spec, "ADLBC") %>%
-  xportr_write  ("./adam/adlbc.xpt", label = "Subject-Level Analysis Dataset")
+adlbh %>%
+  xportr_format (var_spec, "ADLBH") %>%
+  xportr_type   (var_spec, "ADLBH") %>%
+  xportr_label  (var_spec, "ADLBH") %>%
+  xportr_write  ("./adam/adlbh.xpt", label = "Subject-Level Analysis Dataset")
+
+
+

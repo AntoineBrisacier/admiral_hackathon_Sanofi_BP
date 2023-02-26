@@ -68,6 +68,17 @@ format_atptn <- function(x) {
   )
 }
 
+format_racen <- function(x) {
+  case_when(
+    x== "AMERICAN INDIAN OR ALASKA NATIVE" ~ 6,
+    x== "ASIAN" ~ 3,
+    x== "BLACK OR AFRICAN AMERICAN" ~ 2,
+    x== "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 5,
+    x== "WHITE" ~ 1,
+    TRUE ~ 999999
+  )
+}
+
 
 ##Derivations----
 ### TRTP(N) /TRTA(N)----
@@ -146,6 +157,11 @@ advs <- advs %>%
 
 ### BASETYPE
 advs <- advs %>% mutate(BASETYPE= ATPT)
+
+
+# RACEN----
+advs <- advs %>% mutate(RACEN = format_racen(RACE))
+
 
 
 ## Final dataset----
