@@ -1,64 +1,104 @@
-# ADTTE Prog ----
+## ADTTE derivations
 
-## Libraries loading----
-library(haven)
+## Launch library
 library(admiral)
-library(dplyr)
-library(tidyr)
+library(dplyr, warn.conflicts = FALSE)
+library(lubridate)
+library(stringr)
 library(metacore)
 library(metatools)
 library(xportr)
-library(lubridate)
-library(stringr)
 
-## Input datasets reading----
-adsl <- read_xpt ("./adam/adsl.xpt")
+## Read data
 
-## Convert blanks to NA----
-XXXX <- convert_blanks_to_na(lb)
+dm <- read_xpt("sdtm/dm.xpt")
+ae <- read_xpt("sdtm/ae.xpt")
+adsl <- read_xpt("adam/adsl.xpt")
+adae <- read_xpt("adam/adae.xpt")
 
-## Category functions
+# RACEN New description - Different from ADSL
 
-##Derivations----
-###Predecessors / TRTA(N) / TRTP(N)----
-
-adtte <- adsl %>%
-  # Join ADSL variables with LB
-  derive_vars_merged(
-    dataset_add = adsl,
-    new_vars = vars (AGE, AGEGR1, AGEGR1N, COMP24FL, DSRAEFL, RACE,
-                     RACEN, SAFFL, SEX, STUDYID, SUBJID, TRTA=TRT01A, TRTAN=TRT01AN,
-                     TRTEDT, TRTP=TRT01P, TRTPN=TRT01PN, TRTSDT, USUBJID, RFENDT),
-    by_vars = vars(STUDYID, USUBJID)
+format_racen <- function(x) {
+  case_when(
+    x== "AMERICAN INDIAN OR ALASKA NATIVE" ~ 6,
+    x== "ASIAN" ~ 3,
+    x== "BLACK OR AFRICAN AMERICAN" ~ 2,
+    x== "NATIVE HAWAIIAN OR OTHER PACIFIC ISLANDER" ~ 5,
+    x== "WHITE" ~ 1,
+    TRUE ~ 999999
   )
+}
+
+## ADSL : Get a set of values useful for the derivations and to be
+##         kept in the final dataset
+
+adsl <- adsl %>%
+  dplyr::select (AGE, RACE, SAFFL, SEX, SITEID, STUDYID, TRTEDT, TRTSDT, USUBJID,
+                 AGEGR1, AGEGR1N, RACEN, TRT01A, TRT01AN, TRT01P, TRTDURD, 
+                 RFENDT)
+
+ae_source <- event_source(
+  dataset_name = "adae",
+  filter = CQ01NAM=="DERMATOLOGIC EVENTS" & AOCC01FL =="Y" & TRTEMFL == "Y",
+  date = ASTDT,
+  set_values_to = vars(
+    EVNTDESC = "Dematologic Event Occured",
+    SRCDOM = "ADAE",
+    SRCVAR = "ASTDT",
+    SRCSEQ = AESEQ
+  )
+)
+
+last_trt <- censor_source(
+  dataset_name = "adsl",
+  date = RFENDT,
+  set_values_to = vars(
+    EVNTDESC = "Study Completion Date",
+    SRCDOM = "ADSL",
+    SRCVAR = "RFENDT"
+  )
+)
+
+adtte <- derive_param_tte(
+  dataset_adsl = adsl,
+  event_conditions = list(ae_source),
+  censor_conditions = list(last_trt),
+  source_datasets = list(adsl = adsl, adae=adae),
+  set_values_to = vars(
+    PARAMCD = "TTDE",
+    PARAM = "Time to First Dermatologic Event"
+  )
+)
+
+adtte_final <-
+  derive_vars_dy(
+    adtte,
+    reference_date = STARTDT,
+    source_vars = vars(ADT)
+  ) %>%
+  mutate (AVAL=ADY)
 
 
+adtte_finalb <-
+  derive_vars_merged(
+    adtte_final,
+    adsl,
+    by_vars=vars(STUDYID, USUBJID),
+    order = NULL,
+    new_vars = NULL,
+    mode = NULL,
+    filter_add = NULL,
+    match_flag = NULL,
+    check_type = "warning",
+    duplicate_msg = NULL
+  ) %>%
+  mutate (TRTA = TRT01A, TRTAN=TRT01AN, TRTP = TRT01P, TRTDUR=TRTDURD)
 
+adtte_finalb <- adtte_finalb %>% mutate(RACEN = format_racen(RACE))
 
+# Checks
+## Final dataset, applying metadata----
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## Final dataset----
 var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
   dplyr::rename(type = "Data Type") %>%
   rlang::set_names(tolower) %>% filter (dataset=="ADTTE")
@@ -66,24 +106,21 @@ var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
 
 var_spec$type   <- recode(var_spec$type, text="Char")
 var_spec$type [str_ends(var_spec$variable, "DT")] <- "Date"
-var_spec$format <- recode(var_spec$format,DATE9.="DATE.")
+#var_spec$format <- recode(var_spec$format,DATE9.="DATE.")
 var_spec$length <- as.numeric(var_spec$length)
 var_spec$order  <- as.numeric(var_spec$order)
 
 
-adtte <- adtte %>% select(var_spec$variable) %>%
-  arrange(USUBJID, PARAMCD) %>%
+adtte_fin <-  adtte_finalb %>% select(var_spec$variable)
 
-### Applying metadata----
-adtte <- adtte %>%
+adtte_fin <- adtte_fin %>%
   xportr_length (var_spec, "ADTTE") %>%
   xportr_order  (var_spec, "ADTTE") %>%
   xportr_label  (var_spec, "ADTTE")
 
-
-### Save as XPT----
-adtte %>%
+## Save as XPT----
+adtte_fin %>%
   xportr_format (var_spec, "ADTTE") %>%
   xportr_type   (var_spec, "ADTTE") %>%
   xportr_label  (var_spec, "ADTTE") %>%
-  xportr_write  ("./adam/adtte.xpt", label = "Subject-Level Analysis Dataset")
+  xportr_write  ("./adam/adtte.xpt", label = "AE Time To 1st Derm. Event Analysis")
