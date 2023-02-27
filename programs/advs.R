@@ -301,3 +301,6 @@ advs <- advs %>%
 
 dir <- tempdir() # Change to whichever directory you want to save the dataset in
 saveRDS(advs, file = file.path(dir, "advs.rds"), compress = "bzip2")
+
+
+derive_vars_dt()

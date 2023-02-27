@@ -1,91 +1,112 @@
 # Name: ADSL
-#
 # Label: Subject Level Analysis Dataset
-#
-# Input: dm, ex, ds
+
+
 library(admiral)
-library(admiral.test) # Contains example datasets from the CDISC pilot project
+library(admiral.test)
 library(dplyr)
 library(lubridate)
 library(stringr)
+library(tidyverse)
 
 # Load source datasets ----
-
-# Use e.g. haven::read_sas to read in .sas7bdat, or other suitable functions
-# as needed and assign to the variables below.
-# For illustration purposes read in admiral test data
 
 data("admiral_dm")
 data("admiral_ds")
 data("admiral_ex")
 data("admiral_ae")
 data("admiral_lb")
+data("admiral_sv")
 
 dm <- admiral_dm
 ds <- admiral_ds
 ex <- admiral_ex
 ae <- admiral_ae
 lb <- admiral_lb
+vs <- admiral_vs
+sv <- admiral_sv
 
-# When SAS datasets are imported into R using haven::read_sas(), missing
-# character values from SAS appear as "" characters in R, instead of appearing
-# as NA values. Further details can be obtained via the following link:
-# https://pharmaverse.github.io/admiral/articles/admiral.html#handling-of-missing-values
 
 dm <- convert_blanks_to_na(dm)
 ds <- convert_blanks_to_na(ds)
 ex <- convert_blanks_to_na(ex)
 ae <- convert_blanks_to_na(ae)
 lb <- convert_blanks_to_na(lb)
+vs <- convert_blanks_to_na(vs)
 
 # User defined functions ----
 
-# Here are some examples of how you can create your own functions that
-#  operates on vectors, which can be used in `mutate`.
-
 # Grouping
-format_racegr1 <- function(x) {
-  case_when(
-    x == "WHITE" ~ "White",
-    x != "WHITE" ~ "Non-white",
-    TRUE ~ "Missing"
-  )
-}
+# format_racegr1 <- function(x) {
+#   case_when(
+#     x == "WHITE" ~ "White",
+#     x != "WHITE" ~ "Non-white",
+#     TRUE ~ "Missing"
+#   )
+# }
 
 format_agegr1 <- function(x) {
   case_when(
-    x < 18 ~ "<18",
-    between(x, 18, 64) ~ "18-64",
-    x > 64 ~ ">64",
+    x < 65 ~ "<65",
+    between(x, 65, 80) ~ "65-80",
+    x > 80 ~ ">80",
     TRUE ~ "Missing"
   )
 }
 
-format_region1 <- function(x) {
+format_bmicat <- function(x) {
   case_when(
-    x %in% c("CAN", "USA") ~ "NA",
-    !is.na(x) ~ "RoW",
+    x < 25 ~ "Normal",
+    x >= 25 & x < 30 ~ "Overweight",
+    x >= 30 ~ "Obese",
     TRUE ~ "Missing"
   )
 }
 
-format_lddthgr1 <- function(x) {
+
+format_armn <- function(x) {
   case_when(
-    x <= 30 ~ "<= 30",
-    x > 30 ~ "> 30",
-    TRUE ~ NA_character_
+    x == "Placebo" ~ 0,
+    x == "Xanomeline Low Dose" ~ 54,
+    x == "Xanomeline High Dose" ~ 81
   )
 }
+
+
+format_durdisc <- function(x) {
+  case_when(
+    x < 12 ~ "<12",
+    x >= 12 ~ ">=12",
+    TRUE ~ "Missing"
+  )
+}
+
+
+# format_region1 <- function(x) {
+#   case_when(
+#     x %in% c("CAN", "USA") ~ "NA",
+#     !is.na(x) ~ "RoW",
+#     TRUE ~ "Missing"
+#   )
+# }
+
+# format_lddthgr1 <- function(x) {
+#   case_when(
+#     x <= 30 ~ "<= 30",
+#     x > 30 ~ "> 30",
+#     TRUE ~ NA_character_
+#   )
+# }
 
 # EOSSTT mapping
-format_eoxxstt <- function(x) {
-  case_when(
-    x %in% c("COMPLETED") ~ "COMPLETED",
-    !(x %in% c("COMPLETED", "SCREEN FAILURE")) & !is.na(x) ~ "DISCONTINUED",
-    x %in% c("SCREEN FAILURE") ~ NA_character_,
-    TRUE ~ "ONGOING"
-  )
-}
+# format_eoxxstt <- function(x) {
+#   case_when(
+#     x %in% c("COMPLETED") ~ "COMPLETED",
+#     !(x %in% c("COMPLETED", "SCREEN FAILURE")) & !is.na(x) ~ "DISCONTINUED",
+#     x %in% c("SCREEN FAILURE") ~ NA_character_,
+#     TRUE ~ "ONGOING"
+#   )
+# }
 
 # Derivations ----
 # impute start and end time of exposure to first and last respectively, do not impute date
@@ -100,11 +121,71 @@ ex_ext <- ex %>%
     time_imputation = "last"
   )
 
+sv_ext <- sv %>%
+  derive_vars_dtm(
+    new_vars_prefix = "SVST",
+    dtc = SVSTDTC
+  )%>%
+  derive_vars_dtm_to_dt(
+    source_vars = vars(SVSTDTM)
+  )
+
+
+
+
+# Derivations ----
+
+dm_site <- dm %>%
+  select(STUDYID,USUBJID,SITEID,ARM,ARMCD) %>%
+  filter(ARMCD != "Scrnfail") %>%
+  group_by(STUDYID,SITEID,ARMCD) %>%
+  summarise(n=n()) %>%
+  pivot_wider(names_from=ARMCD, values_from=n) %>%
+  mutate(SITEGR1 = case_when(Pbo>3 & Xan_Hi>=3 & Xan_Lo>=3  ~ SITEID,
+                             TRUE ~ "900")) %>%
+  select(STUDYID,SITEID,SITEGR1) %>%
+  ungroup()
+
+head(sv)
+
+
 adsl <- dm %>%
+  derive_vars_merged(
+    dataset_add = dm_site,
+    new_vars = vars(SITEGR1 = SITEGR1),
+    by_vars = vars(STUDYID, SITEID)
+  ) %>%
+
   ## derive treatment variables (TRT01P, TRT01A) ----
-  # See also the "Visit and Period Variables" vignette
-  # (https://pharmaverse.github.io/admiral/articles/visits_periods.html#treatment_adsl)
-  mutate(TRT01P = ARM, TRT01A = ACTARM) %>%
+  mutate(
+    TRT01P = ARM,
+    TRT01A = ACTARM,
+    TRT01PN = format_armn(ARM),
+    TRT01AN = format_armn(ACTARM)
+  )
+
+
+
+
+
+ex_date <- ex %>%
+
+
+
+
+adsl <- adsl %>%
+  derive_vars_merged(
+    dataset_add = sv_ext,
+    filter_add = (VISITNUM ==3),
+    new_vars = vars(TRTSDT = SVSTDT),
+    by_vars = vars(STUDYID, USUBJID)
+  )
+
+
+
+
+
+
   ## derive treatment start date (TRTSDTM) ----
   derive_vars_merged(
     dataset_add = ex_ext,
@@ -132,6 +213,31 @@ adsl <- dm %>%
   derive_vars_dtm_to_dt(source_vars = vars(TRTSDTM, TRTEDTM)) %>%
   ## derive treatment duration (TRTDURD) ----
   derive_var_trtdurd()
+
+
+
+
+
+adsl2 <- adsl %>%
+  derive_vars_merged(
+    dataset_add = vs,
+    filter_add = (VSTESTCD == "WEIGHT" & VISITNUM == 1),
+    new_vars = vars(WEIGHTBL = VSSTRESN),
+    by_vars = vars(STUDYID, USUBJID)
+  ) %>%
+  derive_vars_merged(
+    dataset_add = vs,
+    filter_add = (VSTESTCD == "HEIGHT" & VISITNUM == 1),
+    new_vars = vars(HEIGHTBL = VSSTRESN),
+    by_vars = vars(STUDYID, USUBJID)
+  ) %>%
+  mutate(BMIBL = (compute_bmi(height = HEIGHTBL, weight = WEIGHTBL)))
+
+
+
+
+
+
 
 ## Disposition dates, status ----
 # convert character date to numeric date without imputation
@@ -264,8 +370,9 @@ adsl <- adsl %>%
   )
 
 
+
 # Save output ----
 
-dir <- tempdir() # Change to whichever directory you want to save the dataset in
+dir <- "/cloud/project/adam"
 saveRDS(adsl, file = file.path(dir, "adsl.rds"), compress = "bzip2")
 
