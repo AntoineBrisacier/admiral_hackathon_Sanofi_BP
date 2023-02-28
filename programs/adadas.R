@@ -1,4 +1,9 @@
-# adadas Prog ----
+#ADADAS Prog ----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: ADAS-Cog Analysis
+
 
 ## Libraries loading----
 library(haven)
@@ -178,23 +183,25 @@ adadas <- adadas %>% restrict_derivation(
 
   #complete LOCF records
   # Retrieve LOCF data
-  date_actot <- adadas %>% select(USUBJID, AVISIT,AVISITN,ADT) %>%
+date_actot <- adadas %>% select(USUBJID, AVISIT,AVISITN,ADT) %>%
     arrange (USUBJID,AVISITN,ADT) %>%
     distinct(USUBJID,AVISITN,AVISIT, ADT) %>%
     mutate (ADT_LOCF = ADT, PARAMCD='ACTOT')
 
-  while(sum (is.na(date_actot$ADT_LOCF))>1){
+while(sum (is.na(date_actot$ADT_LOCF))>1){
     date_actot<-date_actot %>%
       mutate (ADT_LOCF= if_else (is.na(ADT_LOCF),lag(ADT_LOCF),ADT_LOCF))
   }
 
-  date_actot <- date_actot %>% filter (is.na(ADT))
+date_actot <- date_actot %>% filter (is.na(ADT))
 
-  date_actot_formerg <- date_actot %>% select(-c(ADT)) %>% rename(ADT=ADT_LOCF)
-  locf_val <- adadas %>% select(-c(AVISIT, AVISITN))
+date_actot_formerg <- date_actot %>% select(-c(ADT)) %>% rename(ADT=ADT_LOCF)
 
-  locf_records <- inner_join (locf_val,date_actot_formerg, by=c("USUBJID", "ADT", "PARAMCD")) %>% mutate(DTYPE='LOCF')
-  adadas <- adadas %>% filter (is.na(DTYPE)) %>%
+locf_val <- adadas %>% select(-c(AVISIT, AVISITN))
+
+locf_records <- inner_join (locf_val,date_actot_formerg, by=c("USUBJID", "ADT", "PARAMCD")) %>% mutate(DTYPE='LOCF')
+
+adadas <- adadas %>% filter (is.na(DTYPE)) %>%
                        bind_rows(locf_records) %>%
                        mutate (ABLFL=(if_else (!is.na(DTYPE), NA_character_, ABLFL)))
 
@@ -235,7 +242,6 @@ var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
 
 var_spec$type   <- recode(var_spec$type, text="Char")
 var_spec$type [str_ends(var_spec$variable, "DT")] <- "Date"
-# var_spec$format <- recode(var_spec$format,DATE9.="DATE.")
 var_spec$length <- as.numeric(var_spec$length)
 var_spec$order  <- as.numeric(var_spec$order)
 

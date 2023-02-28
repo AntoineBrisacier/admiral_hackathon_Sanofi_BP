@@ -1,4 +1,8 @@
 # ADLBHY Prog ----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: Analysis Dataset Lab Hy's Law
 
 ## Libraries loading----
 library(haven)
@@ -137,25 +141,29 @@ adlbhy <- adlbhy %>%
 
 ###PARAM / PARAMCD [HYLAW PARAMETERS]----
 
+#retrieve AST values
 adlbhy_AST_0 <-
   adlbhy %>% select(USUBJID, PARAMCD, AVAL, AVISITN, AVISIT, A1LO, A1HI) %>%
   filter(PARAMCD=="AST") %>% rename(AST=AVAL, A1LO_AST=A1LO, A1HI_AST=A1HI) %>%
   select(-PARAMCD)
 
+#retrieve ALT values
 adlbhy_ALT_0 <-
   adlbhy %>% select(USUBJID, PARAMCD, AVAL, AVISITN, AVISIT,A1LO, A1HI) %>%
   filter(PARAMCD=="ALT") %>% rename(ALT=AVAL, A1LO_ALT=A1LO, A1HI_ALT=A1HI) %>%
   select(-PARAMCD)
 
-
+#retrieve BILI values
 adlbhy_BILI_0 <-
   adlbhy %>% select(USUBJID, PARAMCD, AVAL, AVISITN,AVISIT, A1LO, A1HI) %>%
   filter(PARAMCD=="BILI") %>% rename(BILI=AVAL, A1LO_BILI=A1LO, A1HI_BILI=A1HI) %>%
   select(-PARAMCD)
 
+#pull ALT, AST and BILI data together
 adlbhy_HYLAW_0 <- adlbhy_AST_0 %>% left_join(adlbhy_ALT_0,  by=c("USUBJID","AVISITN","AVISIT")) %>%
                                left_join(adlbhy_BILI_0, by=c("USUBJID","AVISITN","AVISIT"))
 
+#Derived HYLAW paramters
 bilihy <- adlbhy_HYLAW_0 %>%
         mutate(AVAL=(if_else(BILI > (1.5*A1HI_BILI) ,1 , 0))) %>%
         select(-c("ALT","AST", starts_with("A1"))) %>%
@@ -185,7 +193,7 @@ adlbhy_prev <- bind_rows(bilihy ,transhy,HYLAW) %>%
   )
 
 adlbhy_prev <- adlbhy_prev %>%
-  # Join ADSL variables with LB
+  # Join ADSL variables with HYLAW records
   derive_vars_merged(
     dataset_add = adsl,
     new_vars = vars (AGE, AGEGR1, AGEGR1N, COMP24FL, DSRAEFL, RACE,
@@ -193,7 +201,7 @@ adlbhy_prev <- adlbhy_prev %>%
                      TRTEDT, TRTP=TRT01P, TRTPN=TRT01PN, TRTSDT, USUBJID, RFENDT),
     by_vars = vars(USUBJID)
 )
-
+  # merge HYLAW records with ALT-AST and BILI records
 adlbhy <- bind_rows(adlbhy_prev, adlbhy)
 
 ### ABLFL----
@@ -281,7 +289,6 @@ var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
 
 var_spec$type   <- recode(var_spec$type, text="Char")
 var_spec$type [str_ends(var_spec$variable, "DT")] <- "Date"
-# var_spec$format <- recode(var_spec$format,DATE9.="DATE.")
 var_spec$length <- as.numeric(var_spec$length)
 var_spec$order  <- as.numeric(var_spec$order)
 

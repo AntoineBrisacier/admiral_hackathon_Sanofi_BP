@@ -1,4 +1,8 @@
 # ADLBH Prog ----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: Analysis Dataset Lab Hematology
 
 ## Libraries loading----
 library(haven)
@@ -196,7 +200,7 @@ adlbh <-  adlbh %>% derive_var_base(
 
 ### ALBTRVAL----
 # Maximum of [LBSTRESN-(1.5*ULN)] and [(.5*LLN) - LBSTRESN]
-# ==> pas clair les valeurs absolues _ mais ok avec compare!!!!
+# to match with compare, absolute values have been taken
 
 adlbh <- adlbh %>%
   mutate(ALBTRVAL_2= abs((0.5*LBSTNRLO)-LBSTRESN )) %>%
@@ -263,7 +267,7 @@ Last_obs <- bind_rows(Last_obs1, Last_obs2) %>%
                   check_type = "warning") %>%
   mutate(VISITNUM = if_else(VISITNUM>12, 12, VISITNUM))
 
-#Assign flag
+#Flag assignment
 adlbh <- adlbh %>% restrict_derivation(
   derivation = derive_var_merged_exist_flag,
   args = params(

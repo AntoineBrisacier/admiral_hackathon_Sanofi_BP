@@ -1,6 +1,8 @@
-# ADSL Prog ----
-
-##Label: Subject Level Analysis Dataset
+#ADMIRAL HACKATHON - ADSL PROG----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: Subject Level Analysis Dataset
 
 ## Libraries loading----
 
@@ -93,6 +95,15 @@ format_armn <- function(x) {
   )
 }
 
+
+format_dcsreas <- function(x, y = NULL) {
+  if (is.null(y)) {
+    if_else(!x %in% c("SCREEN FAILURE") & !is.na(x), x, NA_character_)
+  } else {
+    if_else(x == "OTHER", y, NA_character_)
+  }
+}
+
 format_dctreas <- function(x) {
   case_when(
   x=="ADVERSE EVENT" ~ "Adverse Event",
@@ -109,15 +120,6 @@ format_dctreas <- function(x) {
   )
 }
 
-
-#####PIGE PAS CETTE FONCTION
-format_dcsreas <- function(x, y = NULL) {
-  if (is.null(y)) {
-    if_else(!x %in% c("SCREEN FAILURE") & !is.na(x), x, NA_character_)
-  } else {
-    if_else(x == "OTHER", y, NA_character_)
-  }
-}
 
 ## Remove screen failure ----
 adsl <- dm %>% filter(ARM !='Screen Failure') %>%
@@ -210,11 +212,11 @@ adsl <- adsl %>%
   # first treatment,
     # converted SV.SVSTDTC to SAS date
     # sv_conv also used for COMPxxFL flag derivation
-sv_conv <- sv %>% derive_vars_dtm(
-                    dtc = SVSTDTC,
-                    new_vars_prefix = "SVST"
-                    )%>% derive_vars_dtm_to_dt(source_vars = vars(SVSTDTM))%>%
-                    select(STUDYID, USUBJID, SVSTDT, VISITNUM)
+sv_conv <- sv %>%
+  derive_vars_dtm(dtc = SVSTDTC,
+                  new_vars_prefix = "SVST") %>%
+  derive_vars_dtm_to_dt(source_vars = vars(SVSTDTM)) %>%
+  select(STUDYID, USUBJID, SVSTDT, VISITNUM)
 
 adsl <- adsl %>%
   derive_vars_merged(
@@ -263,8 +265,6 @@ adsl <- adsl %>% rename (DCDECOD_=DCDECOD)%>%
   ) %>%
   mutate(DCSREAS_2 = if_else(!is.na(DCSREAS_2_), "I/E Not Met", NA_character_ ) ) %>%
   mutate(DCSREAS   = if_else(!is.na(DCSREAS_2),DCSREAS_2,DCSREAS_1))%>%
-
-
   select(!c(DCSREAS_1,DCSREAS_2,DCSREAS_1_,DCSREAS_2_)) %>% rename (DCDECOD=DCDECOD_) %>%
   mutate(DISCONFL = if_else(!(DCSREAS %in% c('Completed','')),'Y','')) %>%
   mutate(DSRAEFL  = if_else(DCSREAS=='Adverse Event','Y',''))
@@ -272,6 +272,7 @@ adsl <- adsl %>% rename (DCDECOD_=DCDECOD)%>%
 ###ITTFL / SAFFL----
 adsl <- adsl %>% mutate(ITTFL=if_else(ARMCD != "","Y","N"))%>%
                  mutate(SAFFL=if_else((ITTFL == "Y" & !is.na(TRTSDT)),"Y","N"))
+
 ###EFFFL----
 #retrieve QS information for efficacy pop
 qs_cibic <- qs %>% filter(QSTESTCD == "CIBIC" & VISITNUM > 3) %>% select(USUBJID, CIBIC=QSTESTCD)
@@ -361,14 +362,15 @@ adsl<- adsl %>% derive_vars_merged(
 
 
 ###EDUCLVL----
-adsl<- adsl %>% derive_vars_merged(
-  dataset_add = sc,
-  filter_add = SCTESTCD=='EDLEVEL',
-  new_vars = vars(EDUCLVL=SCSTRESN),
-  order = vars(USUBJID),
-  mode = "last",
-  by_vars = vars(USUBJID)
-)
+adsl <- adsl %>%
+  derive_vars_merged(
+    dataset_add = sc,
+    filter_add = SCTESTCD == 'EDLEVEL',
+    new_vars = vars(EDUCLVL = SCSTRESN),
+    order = vars(USUBJID),
+    mode = "last",
+    by_vars = vars(USUBJID)
+  )
 
 ###DISONSDT / VISIT1DT ----
 adsl<- adsl %>% derive_vars_merged(
@@ -438,53 +440,51 @@ adsl <- adsl %>% derive_vars_merged(
             by_vars = vars(SITEID)
           )
 
-
 ###CUMDOSE / AVGDD----
-
 #prep data
 Intervals <- adsl %>%
-                          #1st interval
-                          derive_vars_merged(
-                            dataset_add = sv_conv,
-                            filter_add = VISITNUM == 4,
-                            new_vars = vars(VIS_4 = SVSTDT),
-                            order = vars(USUBJID),
-                            mode = "last",
-                            by_vars = vars(USUBJID)
-                            )%>%
-                          derive_vars_merged(
-                            dataset_add = ds_ext,
-                            filter_add = VISITNUM == 4,
-                            new_vars = vars(DISC_4 = DSDECOD),
-                            order = vars(USUBJID),
-                            mode = "last",
-                            by_vars = vars(USUBJID)
-                          ) %>%
-                          #2nd interval
-                          derive_vars_merged(
-                            dataset_add = sv_conv,
-                            filter_add = VISITNUM == 12,
-                            new_vars = vars(VIS_12 = SVSTDT),
-                            order = vars(USUBJID),
-                            mode = "last",
-                            by_vars = vars(USUBJID)
-                          )%>%
-                          derive_vars_merged(
-                            dataset_add = ds_ext,
-                            filter_add = VISITNUM == 12,
-                            new_vars = vars(DISC_12 = DSDECOD),
-                            order = vars(USUBJID),
-                            mode = "last",
-                            by_vars = vars(USUBJID)
-                          )%>%
-                          mutate (Int1 = (if_else(is.na(DISC_4)  & !is.na(VIS_4) , as.integer(VIS_4-TRTSDT+1), as.integer(TRTDURD))))%>%
-                          mutate (Int2_= (if_else(is.na(DISC_12) & !is.na(VIS_12), as.integer(VIS_12-VIS_4),   as.integer(TRTEDT-VIS_4)))) %>%
-                          mutate (Int2 = (if_else(Int2_<=0, NA_integer_, Int2_))) %>%
-                          mutate (Int3 = (if_else(is.na(DISC_12), as.integer(TRTEDT-VIS_12),NA_integer_)))%>%
-                          mutate (dose_int1=Int1*54, dose_int2= Int2*81, dose_int3= Int3*54) %>%
-                          group_by(USUBJID) %>%
-                          mutate (CUMDOSE_ = round(sum(dose_int1,dose_int2,dose_int3, na.rm=TRUE),1) ) %>%
-                          ungroup()
+            #1st interval
+            derive_vars_merged(
+              dataset_add = sv_conv,
+              filter_add = VISITNUM == 4,
+              new_vars = vars(VIS_4 = SVSTDT),
+              order = vars(USUBJID),
+              mode = "last",
+              by_vars = vars(USUBJID)
+              )%>%
+            derive_vars_merged(
+              dataset_add = ds_ext,
+              filter_add = VISITNUM == 4,
+              new_vars = vars(DISC_4 = DSDECOD),
+              order = vars(USUBJID),
+              mode = "last",
+              by_vars = vars(USUBJID)
+            ) %>%
+            #2nd interval
+            derive_vars_merged(
+              dataset_add = sv_conv,
+              filter_add = VISITNUM == 12,
+              new_vars = vars(VIS_12 = SVSTDT),
+              order = vars(USUBJID),
+              mode = "last",
+              by_vars = vars(USUBJID)
+            )%>%
+            derive_vars_merged(
+              dataset_add = ds_ext,
+              filter_add = VISITNUM == 12,
+              new_vars = vars(DISC_12 = DSDECOD),
+              order = vars(USUBJID),
+              mode = "last",
+              by_vars = vars(USUBJID)
+            )%>%
+            mutate (Int1 = (if_else(is.na(DISC_4)  & !is.na(VIS_4) , as.integer(VIS_4-TRTSDT+1), as.integer(TRTDURD))))%>%
+            mutate (Int2_= (if_else(is.na(DISC_12) & !is.na(VIS_12), as.integer(VIS_12-VIS_4),   as.integer(TRTEDT-VIS_4)))) %>%
+            mutate (Int2 = (if_else(Int2_<=0, NA_integer_, Int2_))) %>%
+            mutate (Int3 = (if_else(is.na(DISC_12), as.integer(TRTEDT-VIS_12),NA_integer_)))%>%
+            mutate (dose_int1=Int1*54, dose_int2= Int2*81, dose_int3= Int3*54) %>%
+            group_by(USUBJID) %>%
+            mutate (CUMDOSE_ = round(sum(dose_int1,dose_int2,dose_int3, na.rm=TRUE),1) ) %>%
+            ungroup()
 
 
 

@@ -1,4 +1,8 @@
-# ADLBC Prog ----
+#ADLBC PROG----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: Analysis Dataset Lab Blood Chemistry
 
 ## Libraries loading----
 library(haven)
@@ -186,8 +190,8 @@ adlbc <-  adlbc %>% derive_var_base(
 
 
 ### ALBTRVAL----
-# Maximum of [LBSTRESN-(1.5*ULN)] and [(.5*LLN) - LBSTRESN]
-# ==> pas clair les valeurs absolues _ mais ok avec compare!!!!
+# In spec: Maximum of [LBSTRESN-(1.5*ULN)] and [(.5*LLN) - LBSTRESN]
+# to match with compare, absolute values have been taken
 
 adlbc <- adlbc %>%
   mutate(ALBTRVAL_2= abs((0.5*LBSTNRLO)-LBSTRESN )) %>%
@@ -254,7 +258,7 @@ Last_obs <- bind_rows(Last_obs1, Last_obs2) %>%
                   check_type = "warning") %>%
   mutate(VISITNUM = if_else(VISITNUM>12, 12, VISITNUM))
 
-#Assign flag
+#Flag assignment
 adlbc <- adlbc %>% restrict_derivation(
   derivation = derive_var_merged_exist_flag,
   args = params(
