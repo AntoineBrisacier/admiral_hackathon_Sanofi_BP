@@ -1,6 +1,12 @@
+# ADTTE Prog ----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: AE Time To 1st Derm. Event Analysis Dataset
+
 ## ADTTE derivations
 
-## Launch library
+## Launch library ----
 library(admiral)
 library(dplyr, warn.conflicts = FALSE)
 library(lubridate)
@@ -9,14 +15,14 @@ library(metacore)
 library(metatools)
 library(xportr)
 
-## Read data
+## Read data ----
 
 dm <- read_xpt("sdtm/dm.xpt")
 ae <- read_xpt("sdtm/ae.xpt")
 adsl <- read_xpt("adam/adsl.xpt")
 adae <- read_xpt("adam/adae.xpt")
 
-# RACEN New description - Different from ADSL
+## RACEN New description - Different from ADSL ----
 
 format_racen <- function(x) {
   case_when(
@@ -29,13 +35,15 @@ format_racen <- function(x) {
   )
 }
 
-## ADSL : Get a set of values useful for the derivations and to be
-##         kept in the final dataset
+## ADSL : Get a set of values useful for the derivations and to be ----
+###         kept in the final dataset----
 
 adsl <- adsl %>%
   dplyr::select (AGE, RACE, SAFFL, SEX, SITEID, STUDYID, TRTEDT, TRTSDT, USUBJID,
                  AGEGR1, AGEGR1N, RACEN, TRT01A, TRT01AN, TRT01P, TRTDURD, 
                  RFENDT)
+
+## Define Event ----
 
 ae_source <- event_source(
   dataset_name = "adae",
@@ -49,6 +57,8 @@ ae_source <- event_source(
   )
 )
 
+## Define censor ----
+
 last_trt <- censor_source(
   dataset_name = "adsl",
   date = RFENDT,
@@ -59,6 +69,8 @@ last_trt <- censor_source(
   )
 )
 
+
+## Time to event derivation  ----
 adtte <- derive_param_tte(
   dataset_adsl = adsl,
   event_conditions = list(ae_source),
@@ -70,6 +82,7 @@ adtte <- derive_param_tte(
   )
 )
 
+##  AVAL derivation ----
 adtte_final <-
   derive_vars_dy(
     adtte,
@@ -78,7 +91,7 @@ adtte_final <-
   ) %>%
   mutate (AVAL=ADY)
 
-
+## Merge with ADSL & derive TRTA, TRTAN, TRTP and TRTDUR ----
 adtte_finalb <-
   derive_vars_merged(
     adtte_final,
@@ -94,9 +107,11 @@ adtte_finalb <-
   ) %>%
   mutate (TRTA = TRT01A, TRTAN=TRT01AN, TRTP = TRT01P, TRTDUR=TRTDURD)
 
+## Adapt RACEN derivation to final version of the specifications ----
+
 adtte_finalb <- adtte_finalb %>% mutate(RACEN = format_racen(RACE))
 
-# Checks
+
 ## Final dataset, applying metadata----
 
 var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%

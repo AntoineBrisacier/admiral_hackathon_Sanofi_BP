@@ -1,6 +1,11 @@
-## ADAE derivations
+# ADAE Prog ----
+#ADMIRAL HACKATHON----
+#Team SANOFI_BP----
+#Date 28FEB2023----
+#Label: Adverse Events Dataset
 
-## Launch library
+
+## Launch library ----
 library(admiral)
 library(dplyr, warn.conflicts = FALSE)
 library(lubridate)
@@ -9,13 +14,13 @@ library(metacore)
 library(metatools)
 library(xportr)
 
-## Read data
+## Read data ----
 
 dm <- read_xpt("sdtm/dm.xpt")
 ae <- read_xpt("sdtm/ae.xpt")
 adsl <- read_xpt("adam/adsl.xpt")
 
-# RACEN New description - Different from ADSL
+# RACEN New description to fit with new specifications ----
 
 format_racen <- function(x) {
   case_when(
@@ -29,13 +34,14 @@ format_racen <- function(x) {
 }
 
 
-## ADSL : Get a set of values useful for the derivations and to be
-##         kept in the final dataset
+## ADSL : variables selection ----
+## Get a set of ADSL values useful for derivations and to be kept in the final ADAE
 
 adsl <- adsl %>%
   dplyr::select (AGE, RACE, SAFFL, SEX, SITEID, STUDYID, TRTEDT, TRTSDT, 
                 USUBJID, AGEGR1, AGEGR1N, RACEN, TRT01A, TRT01AN)
 
+## AE : variables selection ----
 ## AE : Get a set of values useful for the derivations and to be
 ##         kept in the final dataset
 
@@ -45,8 +51,7 @@ ae <- ae %>%
                 AESDTH, AESEQ,AESER, AESEV,AESHOSP, AESLIFE, AESOC, AESOCCD,
                 AESOD, AETERM, STUDYID, USUBJID, AESTDTC, AEENDTC)
 
-## Merge all data as one database to start derivations.
-## and create TRTA and TRTAN
+## Merge all data as 1 database to start derivations and create TRTA and TRTAN ----
 
 adae0 <-
   derive_vars_merged(
@@ -63,6 +68,7 @@ adae0 <-
   ) %>%
   mutate (TRTA=TRT01A, TRTAN=TRT01AN)
 
+## ASTDT + ASTDTF ----
 ## Create Imputed start date of event and store resulting date in ASTDT
 ## ASTDTF is also created; only the day is imputed when missing
 
@@ -79,7 +85,8 @@ adae1 <-
     preserve = FALSE
   )
 
-# Derive a temporary event start date without imputation to derive the duration
+## Start date num, no imputation ----
+## Derive a temporary event start date without imputation to derive the duration
 adae1b <-
   derive_vars_dt(
     adae1,
@@ -87,8 +94,8 @@ adae1b <-
     dtc= AESTDTC
   )
 
-## Create end date of event from --DTC variable
-## No imputation for end dates
+## AENDT derivation ----
+## Create end date of event from --DTC variable, No imputation for end dates
 
 adae2 <-
   derive_vars_dt(
@@ -97,8 +104,9 @@ adae2 <-
     dtc= AEENDTC
   )
 
+## ADURN/ADURU derivation ----
 ## Derive AE duration and assign a value to the unit
-## Derivation is done using the non-imputed start date
+##   Derivation is done using the non-imputed start date
 
 adae3 <-
   derive_vars_duration(
@@ -119,7 +127,7 @@ adae3 <-
   )
 
 
-## Derive Study Days (AENDY and ASTDY)
+## AENDY and ASTDY Derive Study Days ----
 
 adae4 <-
   derive_vars_dy(
@@ -129,8 +137,8 @@ adae4 <-
   )
 
 
-## CQ01NAM
-##If AEDECOD contains any of the character strings of ('APPLICATION', 
+## CQ01NAM derivation ----
+## If AEDECOD contains any of the character strings of ('APPLICATION', 
 ##   'DERMATITIS', 'ERYTHEMA', 'BLISTER')
 ## OR if AEBODSYS='SKIN AND SUBC UTANEOUS TISSUE DISORDERS'
 ##but AEDECOD is not in ('COLD SWEAT', 'HYPERHIDROSIS', 'ALOPECIA')
@@ -149,7 +157,7 @@ adae5 <- adae4 %>%
   )
 
 
-## TRTEMFL : Emergence flag
+## TRTEMFL : Emergence flag ----
 
 
 adae6 <-
@@ -170,7 +178,7 @@ adae6 <-
 adae6 <- mutate (adae6, TRTEMFL=ifelse(is.na(ASTDT), "", TRTEMFL))
 
 
-## AOCC01FL
+## AOCC01FL derivation ----
 #  Subset to CQ01NAM='' and TRTEMFL='Y' and sort by Subject (USUBJID),
 # Start Date (ASTDT), and Sequence Number (AESEQ) and flag the first record
 # (set AOCC01FL=?Y?) within each Subject (Flag First Treatment Emergent
@@ -189,7 +197,7 @@ adae7 <- adae6 %>%
   )
 
 
-## AOCC02FL
+## AOCC02FL derivation ----
 ## Subset to TRTEMFL='Y' and AESER='Y' and sort by Subject (USUBJID),
 ## Start Date (ASTDT), and Sequence Number (AESEQ) and flag the first record
 ## (set AOCC02FL=?Y?) within each Subject
@@ -206,7 +214,7 @@ adae8 <- adae7 %>%
     filter = (AESER=="Y" & TRTEMFL=="Y")
   )
 
-## AOCC03FL
+## AOCC03FL derivation ----
 ## Subset to TRTEMFL='Y' and AESER='Y' and sort by Subject (USUBJID),
 ## System Organ Class (AEBODSYS), Start Date (ASTDT), and Sequence Number
 ##(AESEQ) and flag the first record (set AOCC03FL='Y') within each Subject & SOC
@@ -224,7 +232,7 @@ adae9 <- adae8 %>%
     filter = (AESER=="Y" & TRTEMFL=="Y")
   )
 
-## AOCC04FL
+## AOCC04FL derivation  ----
 ## Subset to TRTEMFL='Y' and AESER='Y' and sort by Subject (USUBJID),
 ## System Organ Class (AEBODSYS), Preferred Term (AEDECOD), Start Date (ASTDT),
 ## and Sequence Number (AESEQ) and flag the first record (set AOCC04FL='Y')
@@ -243,7 +251,7 @@ adae10 <- adae9 %>%
   )
 
 
-## AOCCFL
+## AOCCFL derivation ----
 ##  Subset to TRTEMFL='Y' and sort by Subject (USUBJID), Start Date (ASTDT),
 ## and Sequence Number (AESEQ) and flag the first record (set AOCCFL='Y')
 ## within each Subject
@@ -261,7 +269,7 @@ adae11 <- adae10 %>%
   )
 
 
-## AOCCPFL
+## AOCCPFL derivation ----
 ## Subset to TRTEMFL='Y' and sort by Subject (USUBJID), System Organ Class
 ##  (AEBODSYS), Preferred Term (AEDECOD), Start Date (ASTDT), and Sequence
 ##  Number (AESEQ) and flag the first record (set AOCCPFL='Y') within each
@@ -279,7 +287,7 @@ adae12 <- adae11 %>%
     filter = (TRTEMFL=="Y")
   )
 
-## AOCCSFL
+## AOCCSFL derivation ----
 ##  Subset to TRTEMFL='Y' and sort by Subject (USUBJID), System Organ Class
 ## (AEBODSYS), Start Date (ASTDT), and Sequence Number (AESEQ) and flag the
 ##  first record (set AOCCSFL='Y') within each Subject and SOC
@@ -300,7 +308,7 @@ adae13 <- adae12 %>%
 adae13 <- adae13 %>% mutate(RACEN = format_racen(RACE))
 
 
-# Checks
+
 ## Final dataset, applying metadata----
 
 var_spec <- readxl::read_xlsx("./metadata/specs.xlsx", sheet = "Variables") %>%
